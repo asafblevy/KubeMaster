@@ -1,0 +1,46 @@
+Jenkinsfile (Declarative Pipeline)
+pipeline {
+    agent any
+    tools { 
+        maven 'maven'
+    }
+    stages {
+        stage('clone git repo') {
+            steps {
+                git 'https://github.com/zivkashtan/course'
+            }
+        }
+        stage('sonarqube analysyis') {
+            steps {
+                withSonarQubeEnv('sonarserver') {
+                    sh "mvn sonar:sonar \
+                    -Dsonar.projectKey=timetracker \
+                    -Dsonar.host.url=http://sonar/ \
+                    -Dsonar.login=c920ff56ab58bb9bbb307b5c7f9f56195208ce2e"
+                }
+            }
+        }
+        stage('maven build') {
+            steps {
+                sh 'mvn install'
+            }
+        }
+        stage('nexus upload war') {
+            steps {
+                nexusArtifactUploader artifacts: [[artifactId: 'time-tracker-parent', classifier: '', file: 'web/target/time-tracker-web-0.3.1.war', type: 'war']], credentialsId: 'admin', \
+                groupId: 'clinic.programming.time-tracker', nexusUrl: 'nexus-service:8081', nexusVersion: 'nexus3', protocol: 'http', \
+                repository: 'maven-releases', version: '0.3.1'
+            }
+        }
+        stage('docker build and push') {
+            steps {
+                script {
+                    docker.withRegistry('http://nexus-service:8081/repository/docker-releases/', 'admin') {
+                        def customImage = docker.build("time-tracker:${env.BUILD_ID}")
+                        customImage.push()
+                    }
+                }
+            }
+        }
+    }
+}
